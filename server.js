@@ -10,10 +10,10 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Connect DB
+
 connectDB();
 
-// Routes
+
 app.use("/api/auth", authRoutes);
 
 app.get("/", (req, res) => {
