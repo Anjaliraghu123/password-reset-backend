@@ -17,5 +17,5 @@ const sendEmail = async (to, text) => {
     text,
   });
 };
-
+     
 module.exports = sendEmail; 
