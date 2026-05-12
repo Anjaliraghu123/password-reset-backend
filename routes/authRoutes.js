@@ -1,198 +1,194 @@
 import express from "express";
-import User from "../models/User.js";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
+
+import User from "../models/User.js";
 
 const router = express.Router();
 
-// ================= HELPER FUNCTIONS =================
-const validateEmail = (email) => {
-  const regex = /^\S+@\S+\.\S+$/;
-  return regex.test(email);
-};
 
-// ================= REGISTER =================
+// REGISTER
 router.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // validation
-    if (!name || !email || !password) {
-      return res.status(400).json({ success: false, msg: "All fields required" });
-    }
+    const userExists = await User.findOne({ email });
 
-    if (!validateEmail(email)) {
-      return res.status(400).json({ success: false, msg: "Invalid email format" });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ success: false, msg: "Password must be at least 6 characters" });
-    }
-
-    const emailLower = email.toLowerCase();
-
-    const existingUser = await User.findOne({ email: emailLower });
-    if (existingUser) {
-      return res.status(400).json({ success: false, msg: "User already exists" });
+    if (userExists) {
+      return res.status(400).json({
+        message: "User already exists",
+      });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       name,
-      email: emailLower,
-      password: hashedPassword
+      email,
+      password: hashedPassword,
     });
 
-    res.status(201).json({
-      success: true,
-      msg: "User registered successfully",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email
-      }
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, msg: "Server error" });
+    res.status(201).json(user);
+  } catch (error) {
+    res.status(500).json(error);
   }
 });
 
-// ================= LOGIN =================
+
+// LOGIN
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, msg: "Email and password required" });
-    }
+    const user = await User.findOne({ email });
 
-    const emailLower = email.toLowerCase();
-
-    const user = await User.findOne({ email: emailLower });
     if (!user) {
-      return res.status(404).json({ success: false, msg: "User not found" });
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ success: false, msg: "Invalid credentials" });
-    }
-
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET not set");
-    }
-
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
     );
 
-    res.json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email
-      }
-    });
+    if (!isMatch) {
+      return res.status(400).json({
+        message: "Invalid credentials",
+      });
+    }
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, msg: "Server error" });
+    res.json({
+      message: "Login Successful",
+    });
+  } catch (error) {
+    res.status(500).json(error);
   }
 });
 
-// ================= FORGOT PASSWORD =================
+
+// FORGOT PASSWORD
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
 
-    if (!email || !validateEmail(email)) {
-      return res.status(400).json({ success: false, msg: "Valid email required" });
-    }
+    const user = await User.findOne({ email });
 
-    const emailLower = email.toLowerCase();
-
-    const user = await User.findOne({ email: emailLower });
     if (!user) {
-      return res.status(404).json({ success: false, msg: "User not found" });
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
 
-    // generate token
     const token = crypto.randomBytes(32).toString("hex");
 
-    // hash token (secure)
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
+    user.resetToken = token;
 
-    user.resetToken = hashedToken;
-    user.resetTokenExpiry = Date.now() + 15 * 60 * 1000; // 15 minutes
+    user.resetTokenExpiry =
+      Date.now() + 15 * 60 * 1000;
 
     await user.save();
 
-    const resetLink = `${process.env.CLIENT_URL}/reset-password/${token}`;
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
 
-    //  In production: send via email (nodemailer)
-    console.log("RESET LINK:", resetLink);
-
-    res.json({
-      success: true,
-      msg: "Reset link sent to email (check console in dev)"
+      auth: {
+        user: process.env.EMAIL,
+        pass: process.env.EMAIL_PASSWORD,
+      },
     });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, msg: "Server error" });
+    const resetURL =
+      `http://localhost:3000/reset-password/${token}`;
+
+    await transporter.sendMail({
+      to: user.email,
+      subject: "Password Reset",
+      html: `
+        <h2>Password Reset</h2>
+
+        <p>Click below link to reset password</p>
+
+        <a href="${resetURL}">
+          Reset Password
+        </a>
+      `,
+    });
+
+    res.json({
+      message: "Reset link sent to email",
+    });
+
+  } catch (error) {
+    res.status(500).json(error);
   }
 });
 
-// ================= RESET PASSWORD =================
-router.post("/reset-password/:token", async (req, res) => {
+
+// VERIFY TOKEN
+router.get("/verify-token/:token", async (req, res) => {
   try {
-    const { token } = req.params;
-    const { password } = req.body;
-
-    if (!password || password.length < 6) {
-      return res.status(400).json({ success: false, msg: "Password must be at least 6 characters" });
-    }
-
-    // hash incoming token
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
 
     const user = await User.findOne({
-      resetToken: hashedToken,
-      resetTokenExpiry: { $gt: Date.now() }
+      resetToken: req.params.token,
+
+      resetTokenExpiry: {
+        $gt: Date.now(),
+      },
     });
 
     if (!user) {
-      return res.status(400).json({ success: false, msg: "Invalid or expired token" });
+      return res.status(400).json({
+        message: "Invalid or expired token",
+      });
     }
 
-    user.password = await bcrypt.hash(password, 10);
+    res.json({
+      message: "Token valid",
+    });
+
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+
+// RESET PASSWORD
+router.post("/reset-password/:token", async (req, res) => {
+  try {
+
+    const user = await User.findOne({
+      resetToken: req.params.token,
+
+      resetTokenExpiry: {
+        $gt: Date.now(),
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "Token expired",
+      });
+    }
+
+    const hashedPassword =
+      await bcrypt.hash(req.body.password, 10);
+
+    user.password = hashedPassword;
+
     user.resetToken = undefined;
     user.resetTokenExpiry = undefined;
 
     await user.save();
 
     res.json({
-      success: true,
-      msg: "Password reset successful"
+      message: "Password reset successful",
     });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, msg: "Server error" });
+  } catch (error) {
+    res.status(500).json(error);
   }
 });
 

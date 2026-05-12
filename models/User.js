@@ -1,43 +1,22 @@
 import mongoose from "mongoose";
 
-const userSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: true,
-      trim: true
-    },
+const userSchema = new mongoose.Schema({
+  name: String,
 
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true
-    },
-
-    password: {
-      type: String,
-      required: true,
-      minlength: 6
-    },
-
-    // 🔐 Password reset fields
-    resetToken: {
-      type: String
-    },
-
-    resetTokenExpiry: {
-      type: Date
-    }
+  email: {
+    type: String,
+    unique: true,
+    required: true,
   },
-  {
-    timestamps: true // adds createdAt & updatedAt
-  }
-);
 
-// create model
-const User = mongoose.model("User", userSchema);
+  password: {
+    type: String,
+    required: true,
+  },
 
-// export (IMPORTANT for ES Modules)
-export default User;
+  resetToken: String,
+
+  resetTokenExpiry: Date,
+});
+
+export default mongoose.model("User", userSchema);
