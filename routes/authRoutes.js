@@ -8,10 +8,19 @@ import User from "../models/User.js";
 const router = express.Router();
 
 
-// REGISTER
+// ================= REGISTER =================
+
 router.post("/register", async (req, res) => {
+
   try {
+
     const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        message: "All fields are required",
+      });
+    }
 
     const userExists = await User.findOne({ email });
 
@@ -21,27 +30,49 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
 
-    const user = await User.create({
+    await User.create({
       name,
       email,
       password: hashedPassword,
     });
 
-    res.status(201).json(user);
+    res.status(201).json({
+      message: "Registration Successful",
+    });
+
   } catch (error) {
-    res.status(500).json(error);
+
+    console.log("REGISTER ERROR:", error);
+
+    res.status(500).json({
+      message: error.message,
+    });
   }
 });
 
 
-// LOGIN
+// ================= LOGIN =================
+
 router.post("/login", async (req, res) => {
+
   try {
+
+    console.log("BODY:", req.body);
+
     const { email, password } = req.body;
 
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Email and password required",
+      });
+    }
+
     const user = await User.findOne({ email });
+
+    console.log("USER:", user);
 
     if (!user) {
       return res.status(404).json({
@@ -54,24 +85,35 @@ router.post("/login", async (req, res) => {
       user.password
     );
 
+    console.log("MATCH:", isMatch);
+
     if (!isMatch) {
       return res.status(400).json({
         message: "Invalid credentials",
       });
     }
 
-    res.json({
+    res.status(200).json({
       message: "Login Successful",
     });
+
   } catch (error) {
-    res.status(500).json(error);
+
+    console.log("LOGIN ERROR:", error);
+
+    res.status(500).json({
+      message: error.message,
+    });
   }
 });
 
 
-// FORGOT PASSWORD
+// ================= FORGOT PASSWORD =================
+
 router.post("/forgot-password", async (req, res) => {
+
   try {
+
     const { email } = req.body;
 
     const user = await User.findOne({ email });
@@ -82,7 +124,8 @@ router.post("/forgot-password", async (req, res) => {
       });
     }
 
-    const token = crypto.randomBytes(32).toString("hex");
+    const token =
+      crypto.randomBytes(32).toString("hex");
 
     user.resetToken = token;
 
@@ -122,13 +165,20 @@ router.post("/forgot-password", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json(error);
+
+    console.log("FORGOT PASSWORD ERROR:", error);
+
+    res.status(500).json({
+      message: error.message,
+    });
   }
 });
 
 
-// VERIFY TOKEN
+// ================= VERIFY TOKEN =================
+
 router.get("/verify-token/:token", async (req, res) => {
+
   try {
 
     const user = await User.findOne({
@@ -150,13 +200,20 @@ router.get("/verify-token/:token", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json(error);
+
+    console.log("VERIFY TOKEN ERROR:", error);
+
+    res.status(500).json({
+      message: error.message,
+    });
   }
 });
 
 
-// RESET PASSWORD
+// ================= RESET PASSWORD =================
+
 router.post("/reset-password/:token", async (req, res) => {
+
   try {
 
     const user = await User.findOne({
@@ -188,8 +245,14 @@ router.post("/reset-password/:token", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json(error);
+
+    console.log("RESET PASSWORD ERROR:", error);
+
+    res.status(500).json({
+      message: error.message,
+    });
   }
 });
+
 
 export default router;
